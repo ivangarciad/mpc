@@ -120,7 +120,7 @@ if __name__== "__main__":
         steer_control = 0
 
         start_index = 0 
-        end_index = len(x_ref) - 300
+        end_index = len(x_ref) - 500
         print ('Lenght: ' + str(len(x_ref)))
         print ('dt: ' + str(deltaseconds[0]))
 
@@ -129,79 +129,129 @@ if __name__== "__main__":
         angle_to_ratate = 0
         if curve_fitting_flag == True:
           i = start_index
+          angles = []
+          axs = []
+          ays = []
           while i < end_index:
-                print ('--------------------')
-                print ('Index: ' + str(i))
-                N = 20
+            print ('--------------------')
+            print ('Index: ' + str(i))
+            N = 30
 
-                angle_to_ratate = model.normalize_angle(yaw_ref[i] - yaw_ref[i+1])
-                print (angle_to_ratate)
-                rotation = transforms3d.euler.euler2mat(0, 0, angle_to_ratate, axes='sxyz')
+            angle_to_ratate = model.normalize_angle(yaw_ref[i] - yaw_ref[i+1])
+            print (angle_to_ratate)
+            rotation = transforms3d.euler.euler2mat(0, 0, angle_to_ratate, axes='sxyz')
 
-                points_ref = np.transpose(np.array([(x_ref[i:i+N]), (y_ref[i:i+N]), (np.zeros(N))])) # Reference points
+            points_ref = np.transpose(np.array([(x_ref[i:i+N]), (y_ref[i:i+N]), (np.zeros(N))])) # Reference points
 
-                nodes1 = np.asfortranarray([points_ref[:,0], points_ref[:,1]])
-                curve1 = bezier.Curve(nodes1, degree=N-1)
+            nodes1 = np.asfortranarray([points_ref[:,0], points_ref[:,1]])
+            curve1 = bezier.Curve(nodes1, degree=N-1)
 
-                if N <5:
-                  bezier_sympy = curve1.implicitize()
-                  print (bezier_sympy)
-                  print ('--------------')
-                  x, y = sympy.symbols('x y')
-                  y_value = sympy.solve(bezier_sympy, y, x)
-                  print (y_value)
-                  
-                  print ('Y bezier values:')
-                  y_bezier_new = []
-                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[0,0]).evalf()))
-                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[1,0]).evalf()))
-                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[2,0]).evalf()))
-                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[3,0]).evalf()))
-                  y_bezier_new = np.asarray(y_bezier_new)
-                  print (y_bezier_new)
-                  print (points_ref[:, 0])
+            print ('Points bezier')
+            point1 = np.asfortranarray([[points_ref[N-2,0]],[points_ref[N-2,1]]])
+            s = curve1.locate(point1)
+            if s != None:
+              print ('S value: ' +str(s))
+              print (curve1.evaluate(s))
+              tangent = curve1.evaluate_hodograph(s)
+              print (tangent)
+              axs.append(tangent[0])
+              ays.append(tangent[1])
+              angle = np.arctan2(tangent[1],tangent[0])
+              angles.append(angle)
+              print ('Angulo: ' + str(angle))
 
-                print ('Points bezier')
-                point1 = np.asfortranarray([[points_ref[N-1,0]],[points_ref[N-1,1]]])
-                s = curve1.locate(point1)
-                print (s)
-                print (curve1.evaluate(s))
-                tangent = curve1.evaluate_hodograph(s)
-                angle = np.arctan(tangent[1]/tangent[0])
-                print ('Angulo: ' + str(angle))
+            if N <5:
+               y_bezier_new = []
+               bezier_sympy = curve1.implicitize()
+               print ('--------------')
+               x, y = sympy.symbols('x y')
+               for point_x in points_ref[:,0]:
+                 result = bezier_sympy.subs(x, point_x)  
+                 y_value = sympy.solve(result, y)
+                 print (y_value)
+                 print ([point_x, y_value[0]])
+                 y_bezier_new.append(sympy.re(y_value[0]))
+               
+            s_vals = np.linspace(0.0, 1, N)
+            bezier_points = curve1.evaluate_multi(s_vals)
+            x_bezier = bezier_points[0,:]
+            y_bezier = bezier_points[1,:]
 
+            # Poly fit
+            points_ref_transf = []
+            for point in points_ref:
+                points_ref_transf.append(np.dot(rotation, point))
 
-                s_vals = np.linspace(0.0, 1, 10)
-                bezier_points = curve1.evaluate_multi(s_vals)
-                x_bezier = bezier_points[0,:]
-                y_bezier = bezier_points[1,:]
+            points_ref_transf = np.asarray(points_ref_transf)
+            print ('References at i: ' + str(points_ref_transf[0]))
+            print (len(points_ref_transf))
 
-                points_ref_transf = []
-                for point in points_ref:
-                    points_ref_transf.append(np.dot(rotation, point))
+            coefficients_x = np.polyfit(points_ref[:,0], points_ref[:,1], N-1)
+            coefficients_y = np.polyfit(points_ref[:,1], points_ref[:,0], N-1)
+            y_poly = np.poly1d(coefficients_x)
+            x_poly = np.poly1d(coefficients_y)
+            points_y_poly = []
+            for x, y in zip(points_ref[:,0], y_poly(points_ref[:,0])): 
+                points_y_poly.append([x, y, 0])
+            points_x_poly = []
+            for x, y in zip(x_poly(points_ref[:,1]), points_ref[:,1]): 
+                points_x_poly.append([x, y, 0])
 
-                points_ref_transf = np.asarray(points_ref_transf)
-                print ('References at i: ' + str(points_ref_transf[0]))
-                print (len(points_ref_transf))
+            points_y_poly = np.asarray(points_y_poly)
+            points_x_poly = np.asarray(points_x_poly)
 
-                coefficients_x = np.polyfit(points_ref_transf[:,0], points_ref_transf[:,1], 15)
-                y_poly = np.poly1d(coefficients_x)
+            offset = 20
+            # Data ploting
+            plt.subplot(1,3,1)
+            plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
+            plt.plot(points_ref[0,0], points_ref[0,1], 'blue', marker='x')
+            plt.plot(points_ref[:,0], y_poly(points_ref[:,0]), 'green')
+            plt.ylim([points_ref[0,1]-offset, points_ref[0,1]+offset])
+            plt.xlim([points_ref[0,0]-offset, points_ref[0,0]+offset])
+            plt.title('Y_poly')
+            x_distance_error = 0
+            y_distance_error = 0
+            for a, b in zip(points_ref, points_y_poly):
+                x_distance_error += np.linalg.norm(a-b)
+            for a, b in zip(points_ref, points_x_poly):
+                y_distance_error += np.linalg.norm(a-b)
 
-                plt.subplot(1,2,1)
-                plt.plot(points_ref_transf[:,0], points_ref_transf[:,1], 'yellow', marker='^', linestyle='None')
-                plt.plot(points_ref_transf[0,0], points_ref_transf[0,1], 'blue', marker='x')
-                plt.plot(points_ref_transf[:,0], y_poly(points_ref_transf[:,0]), 'green')
+            print (x_distance_error)
+            print (y_distance_error)
+            plt.text(points_ref[0,0]-offset, points_ref[0,1]-3, str(x_distance_error), fontsize=12)
 
-                plt.subplot(1,2,2)
-                plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
-                plt.plot(points_ref[0,0], points_ref[0,1], 'blue', marker='x')
-                plt.plot(x_bezier, y_bezier, 'blue', marker='^')
-                #plt.plot(points_ref[:,0], y_bezier_new, 'red')
+            plt.subplot(1,3,2)
+            plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
+            plt.plot(points_ref[0,0], points_ref[0,1], 'blue', marker='x')
+            plt.plot(x_poly(points_ref[:,1]), points_ref[:,1], 'green')
+            plt.ylim([points_ref[0,1]-offset, points_ref[0,1]+offset])
+            plt.xlim([points_ref[0,0]-offset, points_ref[0,0]+offset])
+            plt.text(points_ref[0,0]+3, points_ref[0,1]+3, str(y_distance_error), fontsize=12)
+            plt.text(points_ref[0,0]+1, points_ref[0,1]+1, str(yaw_ref[i]), fontsize=12)
+            plt.title('X_poly')
 
-                plt.savefig('mpc_results/mpc_result_'+str(i)+'.png')
-                plt.close()
-                #plt.show()
-                i += 1
+            if N < 4:
+              plt.subplot(1,3,3)
+              plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
+              plt.plot(points_ref[0,0], points_ref[0,1], 'blue', marker='x')
+              plt.plot(x_bezier, y_bezier, 'blue', marker='^')
+              plt.plot(points_ref[:,0], y_bezier_new, 'red')
+              plt.ylim([y_bezier[0]-offset, y_bezier[0]+offset])
+              plt.xlim([x_bezier[0]-offset, x_bezier[0]+offset])
+              plt.title('Bezier')
+
+            plt.savefig('mpc_results/mpc_result_'+str(i)+'.png')
+            plt.close()
+            #plt.show()
+            i += 1
+
+          plt.figure(1)
+          plt.plot(angles)
+          plt.figure(2)
+          plt.plot(axs)
+          plt.figure(3)
+          plt.plot(ays)
+          plt.show()
 
         exit()
         if mpc_flag == True:
