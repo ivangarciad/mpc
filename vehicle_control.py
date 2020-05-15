@@ -5,53 +5,40 @@ from transforms3d.euler import euler2mat, mat2euler
 import transforms3d.derivations.eulerangles
 import json
 from scipy.signal import medfilt, medfilt2d, wiener, spline_filter, cubic
-import model_carla as model
 import mpc
 import scipy
 import sys, time
 import numpy as np
+import model_carla as model
 import bezier
+import sympy
 
 from scipy import interpolate
-
-
-font = {'family': 'serif',
-        'color':  'darkred',
-        'weight': 'normal',
-        'size': 16,
-        }
 
 if __name__== "__main__":
 
     if len(sys.argv) == 2:
 
-        yaw = []
-        yaw_estimate = []
-
-        roll = []
-        roll_estimate = []
-
-        pitch = []
-        pitch_estimate = []
 
         x_carla = []
-        x_ekf = []
-        x_estimate = []
+        x_ref = []
+        x_model_estimated = []
 
         y_carla = []
-        y_ekf = []
-        y_estimate = []
+        y_ref = []
+        y_model_estimated = []
+
+        yaw_ref = []
+        yaw_model_estimated = []
 
         wheelbase = []
         deltaseconds = []
-        lon_speed = []
-        lon_speed_estimated = []
+        x_speed_veh = []
+        veh_speed_model_estimated = []
         steer = []
 
-        z_angle = []
-
         time_list = []
-        x_state_vector = []
+        x_state_vector_ref = []
         x_acc_veh = []
         throttle = []
         brake = []
@@ -66,45 +53,60 @@ if __name__== "__main__":
         while len(line) != 0: 
             data = eval(line)
 
-            yaw.append(np.deg2rad(data['yaw']))
-            roll.append(data['roll'])
-            pitch.append(data['pitch'])
-            x_ekf.append(data['x'])
-            y_ekf.append(data['y'])
-            wheelbase.append(data['wheelbase']-prius_parameters['wheelbase'])
-            deltaseconds.append(data['deltaseconds'])
-            lon_speed.append(data['lon_speed'])
-            #steer.append(data['steer']*np.deg2rad(15))
-            steer.append(data['steer']*np.deg2rad(57))
-            z_angle.append(data['z_speed']*deltaseconds[-1])
-            x_acc_veh.append(data['x_acc']) 
-            throttle.append(data['throttle'])
-            brake.append(-data['brake'])
-            yaw_ref.append(-data['yaw_ref'])
-
-            if time_list == []:
-                time_list.append(deltaseconds[-1])
-            else:
-                time_list.append(time_list[-1]+deltaseconds[-1])
+            if x_ref == [] or ((data['x'] - x_ref[-1])**2 + (data['y'] - y_ref[-1])**2) > 0.2:
+              x_ref.append(data['x'])
+              y_ref.append(data['y'])
+              yaw_ref.append(data['yaw'])
+              
+              steer.append(data['steer'])
+              x_acc_veh.append(data['x_acc']) 
+              
+              wheelbase.append(data['wheelbase'])
+              deltaseconds.append(data['deltaseconds'])
+              x_speed_veh.append(data['lon_speed'])
+              throttle.append(data['throttle'])
+              brake.append(-data['brake'])
+              
+              if time_list == []:
+                  time_list.append(deltaseconds[-1])
+              else:
+                  time_list.append(time_list[-1]+deltaseconds[-1])
+              
+              wheelbase_para = 1.7 
+              if x_state_vector_ref == []:
+                 x_state_vector_ref.append([x_ref[0], y_ref[0], yaw_ref[0], x_speed_veh[0]]) 
+                 print (x_state_vector_ref)
+              else: 
+                 u = [steer[-1], x_acc_veh[-1]/3.5]
+                 x_state_vector_ref.append(model.move_with_acc(x_state_vector_ref[-1], deltaseconds[-1], u, wheelbase_para))
+              
+              # Representation
+              x_model_estimated.append(x_state_vector_ref[-1][0])
+              y_model_estimated.append(x_state_vector_ref[-1][1])
+              yaw_model_estimated.append(model.normalize_angle(x_state_vector_ref[-1][2]))
+              veh_speed_model_estimated.append(x_state_vector_ref[-1][3])
 
             line = file_p.readline()
-            wheelbase_para = .55 
-            wheelbase_para = 1.7 
-            if x_state_vector == []:
-               x_state_vector.append([x_ekf[0], y_ekf[0], yaw[0], lon_speed[0]]) 
-               print (x_state_vector)
-            else: 
-               x_state_vector.append(model.move_with_acc_new(x_state_vector[-1], deltaseconds[-1], [0, steer[-1], x_acc_veh[-1]/3.5], wheelbase_para))
 
-            x_estimate.append(x_state_vector[-1][0])
-            y_estimate.append(x_state_vector[-1][1])
-            yaw_estimate.append(model.normalize_angle(x_state_vector[-1][2]))
-            lon_speed_estimated.append(x_state_vector[-1][3])
 
-        
+        mpc_flag = True
+
+        if mpc_flag == False:
+           plt.subplot(221)
+           plt.plot(x_ref, y_ref, marker='x')
+           plt.subplot(222)
+           plt.plot(yaw_ref)
+           plt.title('Yaw')
+           plt.subplot(223)
+           plt.plot(x_acc_veh)
+           plt.title('XAcc')
+           plt.subplot(224)
+           plt.plot(steer)
+           plt.title('Steer')
+           plt.show()
+           exit()
 
         mpc = mpc.MPC()
-        
 
         x_mpc = []
         y_mpc = []
@@ -114,166 +116,199 @@ if __name__== "__main__":
         a_mpc = []
         time_mpc = []
         
-        
-        a_control = 0
+        acc_control = 0
         steer_control = 0
-        aux_index = 0
 
+        start_index = 0 
+        end_index = len(x_ref) - 300
+        print ('Lenght: ' + str(len(x_ref)))
+        print ('dt: ' + str(deltaseconds[0]))
 
-        first_time = True
-        count = 0
-        mpc_flag = False
-        start_index = 1050 
-        end_index = len(x_ekf) - 300
-        print ('Lenght: ' + str(len(x_ekf)))
-
-        x_state_vector = [x_ekf[start_index], y_ekf[start_index], yaw[start_index], 0]
-
-        if mpc_flag == True:
+        curve_fitting_flag = True
+        x_state_vector_transf = []
+        angle_to_ratate = 0
+        if curve_fitting_flag == True:
           i = start_index
-          index = 0
           while i < end_index:
                 print ('--------------------')
                 print ('Index: ' + str(i))
-                print ('Current position: ' + str([x_ekf[i], y_ekf[i], 0]))
-                print ('Yaw: ' + str(yaw[i]))
-                print ('Yaw State Vector: ' + str(x_state_vector[2]))
-                start = time.time()
-                
-                points_new = np.transpose(np.array([(x_ekf[i:i+60]), (y_ekf[i:i+60]), (np.zeros(60))]))
+                N = 20
 
-                nodes1 = np.asfortranarray([points_new[:,0], points_new[:,1]])
-                curve1 = bezier.Curve(nodes1, degree=59)
+                angle_to_ratate = model.normalize_angle(yaw_ref[i] - yaw_ref[i+1])
+                print (angle_to_ratate)
+                rotation = transforms3d.euler.euler2mat(0, 0, angle_to_ratate, axes='sxyz')
 
-                s_vals = np.linspace(0.0, 1, 10000)
-                points = curve1.evaluate_multi(s_vals)
-                x_bezier = points[0, :]
-                y_bezier = points[1, :]
+                points_ref = np.transpose(np.array([(x_ref[i:i+N]), (y_ref[i:i+N]), (np.zeros(N))])) # Reference points
 
-                points_bezier = np.transpose(np.asarray([(points[0,:]), (points[1,:]), (np.zeros(len(points[0,:])))]))
+                nodes1 = np.asfortranarray([points_ref[:,0], points_ref[:,1]])
+                curve1 = bezier.Curve(nodes1, degree=N-1)
 
-                rotation = transforms3d.euler.euler2mat(0, 0, -x_state_vector[2], axes='sxyz')
-                rotation_inv = transforms3d.euler.euler2mat(0, 0, x_state_vector[2], axes='sxyz')
+                if N <5:
+                  bezier_sympy = curve1.implicitize()
+                  print (bezier_sympy)
+                  print ('--------------')
+                  x, y = sympy.symbols('x y')
+                  y_value = sympy.solve(bezier_sympy, y, x)
+                  print (y_value)
+                  
+                  print ('Y bezier values:')
+                  y_bezier_new = []
+                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[0,0]).evalf()))
+                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[1,0]).evalf()))
+                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[2,0]).evalf()))
+                  y_bezier_new.append(sympy.re(y_value[1][y].subs(x, points_ref[3,0]).evalf()))
+                  y_bezier_new = np.asarray(y_bezier_new)
+                  print (y_bezier_new)
+                  print (points_ref[:, 0])
 
-                points_new_transf = []
-                for point in points_bezier:
-                  points_new_transf.append(np.dot(rotation, point))
+                print ('Points bezier')
+                point1 = np.asfortranarray([[points_ref[N-1,0]],[points_ref[N-1,1]]])
+                s = curve1.locate(point1)
+                print (s)
+                print (curve1.evaluate(s))
+                tangent = curve1.evaluate_hodograph(s)
+                angle = np.arctan(tangent[1]/tangent[0])
+                print ('Angulo: ' + str(angle))
 
-                points_new_transf = np.asarray(points_new_transf)
 
-                x_state_vector_transf = np.copy(x_state_vector)
-                pose = np.dot(rotation, [x_state_vector[0], x_state_vector[1], 0])
-                x_state_vector_transf[0] = pose[0]
-                x_state_vector_transf[1] = pose[1]
-                x_state_vector_transf[2] = 0
-                x_state_vector_transf[3] = x_state_vector[3]
+                s_vals = np.linspace(0.0, 1, 10)
+                bezier_points = curve1.evaluate_multi(s_vals)
+                x_bezier = bezier_points[0,:]
+                y_bezier = bezier_points[1,:]
 
-                N = 6
-                print (N)
-                samples_per_T = 4
+                points_ref_transf = []
+                for point in points_ref:
+                    points_ref_transf.append(np.dot(rotation, point))
 
-                x_ref = points_new[0:50,0]
-                y_ref = points_new[0:50,1]
+                points_ref_transf = np.asarray(points_ref_transf)
+                print ('References at i: ' + str(points_ref_transf[0]))
+                print (len(points_ref_transf))
 
-                point_ref_transf = np.asarray([np.dot(rotation, [x_ref[0], y_ref[0], 0])]) 
-                for x, y in zip(x_ref[1:], y_ref[1:,]):
-                  point_ref_transf = np.append(point_ref_transf, [np.dot(rotation, [x, y, 0])], axis=0)
-
-                
-                coefficients_x = np.polyfit(points_new_transf[:,0], points_new_transf[:,1], 10)
+                coefficients_x = np.polyfit(points_ref_transf[:,0], points_ref_transf[:,1], 15)
                 y_poly = np.poly1d(coefficients_x)
-                coefficients = coefficients_x
-                poly = y_poly
 
-                x_ref_transf = point_ref_transf[:,0]
-                y_ref_transf = poly(point_ref_transf[:,0])
+                plt.subplot(1,2,1)
+                plt.plot(points_ref_transf[:,0], points_ref_transf[:,1], 'yellow', marker='^', linestyle='None')
+                plt.plot(points_ref_transf[0,0], points_ref_transf[0,1], 'blue', marker='x')
+                plt.plot(points_ref_transf[:,0], y_poly(points_ref_transf[:,0]), 'green')
 
-                point_ref = np.asarray([np.dot(rotation_inv, [x_ref_transf[0], y_ref_transf[0], 0])]) 
-                for x, y in zip(x_ref_transf[1:], y_ref_transf[1:,]):
-                  point_ref = np.append(point_ref, [np.dot(rotation_inv, [x, y, 0])], axis=0)
+                plt.subplot(1,2,2)
+                plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
+                plt.plot(points_ref[0,0], points_ref[0,1], 'blue', marker='x')
+                plt.plot(x_bezier, y_bezier, 'blue', marker='^')
+                #plt.plot(points_ref[:,0], y_bezier_new, 'red')
 
-                sol_mpc = mpc.opt(x_state_vector_transf[0], x_state_vector_transf[1], x_state_vector_transf[2], x_state_vector_transf[3], samples_per_T*np.asarray(deltaseconds[i:i+N]), wheelbase_para, a_control, steer_control, N, poly, coefficients)
-                end = time.time()
-                print('Elapsed time: ' + str(end - start))
-
-                x_state_list = [[x_state_vector[0], x_state_vector[1], x_state_vector[2], x_state_vector[3]]]
-                print ('x_state_list: ' + str(x_state_list[-1]))
-                for acc_elem, steer_elem in zip(sol_mpc[:N], sol_mpc[N:]):
-                    print ('Soluciones de control: ' + str([acc_elem, steer_elem]))
-                    x_state_list.append(model.move_with_acc(x_state_list[-1], samples_per_T*deltaseconds[i], [0, steer_elem, acc_elem], wheelbase_para, debug=True))
-                    print ('Estado: ' + str(x_state_list[-1]))
-                
-                x_state = np.asarray(x_state_list)
-
-                point_state_transf = np.asarray([np.dot(rotation, [x_state[0,0], x_state[0,1], 0])]) 
-                for x, y in zip(x_state[1:,0], x_state[1:,1]):
-                  point_state_transf = np.append(point_state_transf, [np.dot(rotation, [x, y, 0])], axis=0)
-
-                x_state_transf = point_state_transf[:,0]
-                y_state_transf = poly(point_state_transf[:,0])
-
-                point_state = np.asarray([np.dot(rotation_inv, [x_state_transf[0], y_state_transf[0], 0])]) 
-                for x, y in zip(x_state_transf[1:], y_state_transf[1:,]):
-                  point_state = np.append(point_state, [np.dot(rotation_inv, [x, y, 0])], axis=0)
-
-                #plt.plot(points[:,0], points[:,1], 'orange', marker='^')
-                ax = curve1.plot(1000)
-                ax.plot(x_bezier, y_bezier, marker='x', linewidth=4, linestyle='None', color='green')
-                plt.plot(points_new[:,0], points_new[:,1], 'yellow', marker='^', linestyle='None')
- 
-                #plt.plot(point_ref[:,0], point_ref[:,1], 'black', marker='^')
-                plt.plot(point_state[1:,0], point_state[1:,1], 'red', marker='x')
- 
-                plt.plot(x_state[0,0], x_state[0,1], 'green', marker='o')
-                plt.plot(x_state[1:,0], x_state[1:,1], 'blue', marker='o')
-                plt.plot([x_state[0,0], x_state[0,0]+0.5*np.cos(x_state[0,2])], [x_state[0,1], x_state[0,1]+0.5*np.sin(x_state[0,2])], 'green')
- 
-                plt.savefig('mpc_restuls/mpc_result_'+str(i)+'.png')
+                plt.savefig('mpc_results/mpc_result_'+str(i)+'.png')
                 plt.close()
                 #plt.show()
+                i += 1
 
-                a_control = sol_mpc[0]
+        exit()
+        if mpc_flag == True:
+          i = start_index
+          while i < end_index:
+                print ('--------------------')
+                print ('Index: ' + str(i))
+                N = 6
+
+                x_state_vector_ref = [x_ref[i], y_ref[i], yaw_ref[i], 0]
+
+                rotation = transforms3d.euler.euler2mat(0, 0, -x_state_vector_ref[2], axes='sxyz')
+                rotation_inv = transforms3d.euler.euler2mat(0, 0, x_state_vector_ref[2], axes='sxyz')
+
+                points_ref = np.transpose(np.array([(x_ref[i:i+20*N]), (y_ref[i:i+20*N]), (np.zeros(20*N))])) # Reference points
+
+                points_ref_transf = []
+                for point in points_ref:
+                    points_ref_transf.append(np.dot(rotation, point))
+
+                if x_state_vector_transf == []:
+                    print ('Inicialitation x_state_vector_transf')
+                    x_state_vector_transf = np.asarray([[points_ref_transf[0][0], points_ref_transf[0][1], points_ref_transf[0][2], 0]])
+
+                points_ref_transf = np.asarray(points_ref_transf)
+                print ('References at i: ' + str(points_ref_transf[-1]))
+
+                coefficients_x = np.polyfit(points_ref_transf[:,0], points_ref_transf[:,1], 15)
+                y_poly = np.poly1d(coefficients_x)
+
+                # Reference path is evaluated and MPC is called. 
+                time_scale = 10
+                dt_mpc = 0.2
+                sol_mpc = mpc.opt(x_state_vector_transf[-1], points_ref_transf[:,0], dt_mpc*np.ones(N), wheelbase_para, acc_control, steer_control, N, y_poly, coefficients_x)
+
+                print ('Initial state')
+                if len(x_state_vector_transf) >= 2:
+                  aux = [x_state_vector_transf[-2,:]]
+                else:
+                  aux = [x_state_vector_transf[-1,:]]
+
+                # Car simulator.
+                sol_index = 0
+                for acc_elem, steer_elem in zip(sol_mpc[:N], sol_mpc[N:]):
+                    u = [steer_elem, acc_elem]
+                    print ('Soluciones de control ' + str(sol_index) + ': ' + str(u))
+                    aux.append(model.move_with_acc(np.asarray(aux[-1]), time_scale*deltaseconds[i], u, wheelbase_para, debug=True))
+                    print ('Estado ' + str(sol_index) + ': ' + str(aux[-1]))
+                    sol_index += 1
+                
+                acc_control = sol_mpc[0]
                 steer_control = sol_mpc[N]
 
-                #x_state_vector = model.move_with_acc(x_state_vector, deltaseconds[i], [0, steer_control, a_control], wheelbase_para) # Se define el periodo de muestreo del sistema con 20ms=0.01s. Simulacion del simulador o coche real
-                x_state_vector = x_state[1]
+                # Car simulator.
+                u = [steer_control, acc_control]
+                x_state_vector_transf = np.append(x_state_vector_transf, [model.move_with_acc(np.asarray(x_state_vector_transf[-1,:]), time_scale*deltaseconds[i], u, wheelbase_para, debug=True)], axis=0)
+                print ('Contro Action:')
+                print (u)
+                print ('x_state_vector:')
+                print(x_state_vector_transf[-1])
 
-                print ('x_state_vector: ' + str(x_state_vector))
-                
+                aux = np.asarray(aux)
+                radio = 2
+
+                ax = plt.gca()
+                plt.cla()
+                plt.plot(points_ref_transf[:,0], points_ref_transf[:,1], 'yellow', marker='^', linestyle='None')
+                plt.plot(points_ref_transf[:,0], y_poly(points_ref_transf[:,0]), 'green')
+                #plt.plot(x_state_vector_transf[-2,0], x_state_vector_transf[-2,1], 'green', marker='o')
+                #plt.plot(aux[:,0], aux[:,1], 'blue', marker='o')
+
+                #circulo = matplotlib.patches.Circle(xy=(x_state_vector_transf[-2,0], x_state_vector_transf[-2,1]), radius=radio, fill=None)
+                #ax.add_patch(circulo)
+                #plt.ylim([5, 40])
+ 
+                plt.savefig('mpc_results/mpc_result_'+str(i)+'.png')
+                #plt.close()
+                plt.show()
+
 
                 if time_mpc == []:
                     time_mpc.append(time_list[i])
                 else:
-                    time_mpc.append(samples_per_T*deltaseconds[i]+time_mpc[-1])
+                    time_mpc.append(time_scale*deltaseconds[i]+time_mpc[-1])
 
-                distance_list = []
-                for x_elem, y_elem in zip(points_new[:,0], points_new[:,1]):
-                  distance = (x_elem - x_state_vector[0])**2 + (y_elem - x_state_vector[1])**2
-                  distance_list.append(distance)  
+                for x_elem, y_elem in zip(points_ref_transf[:,0], points_ref_transf[:,1]):
+                  if len(x_state_vector_transf) >= 2:
+                    distance = (x_elem - x_state_vector_transf[-2,0])**2 + (y_elem - x_state_vector_transf[-2,1])**2
+                  else:
+                    distance = (x_elem - x_state_vector_transf[-1,0])**2 + (y_elem - x_state_vector_transf[-1,1])**2
+                  if distance > radio:
+                    i += 1
+                  else:
+                    i += 1
+                    break
 
-                index = 0
-                for dist_ant, dist, dist_sig in zip(distance_list[0:], distance_list[1:], distance_list[2:]):
-                    index += 1
-                    if dist_ant < dist and dist < 1.0:
-                        i += index
-                        print ([index, dist_ant])
-                        break
 
-                #print (distance_list)
-                #if index == len(distance_list):
-                #    i += index
-                #    same_ref = False
-
-                x_mpc.append(x_state_vector[0])
-                y_mpc.append(x_state_vector[1])
-                yaw_mpc.append(x_state_vector[2])
-                speed_mpc.append(x_state_vector[3])
+                x_mpc.append(x_state_vector_ref[0])
+                y_mpc.append(x_state_vector_ref[1])
+                yaw_mpc.append(x_state_vector_ref[2])
+                speed_mpc.append(x_state_vector_ref[3])
                 steer_mpc.append(steer_control)
-                a_mpc.append(a_control)
+                a_mpc.append(acc_control)
 
         plt.subplot(331)
-        plt.plot(time_list[start_index:end_index], np.rad2deg(yaw[start_index:end_index]), 'blue')
-        plt.plot(time_list[start_index:end_index], np.rad2deg(yaw_estimate[start_index:end_index]), 'red')
+        plt.plot(time_list[start_index:end_index], np.rad2deg(yaw_ref[start_index:end_index]), 'blue')
+        plt.plot(time_list[start_index:end_index], np.rad2deg(yaw_model_estimated[start_index:end_index]), 'red')
         if mpc_flag == True:
            plt.plot(time_mpc, np.rad2deg(yaw_mpc), 'green')
         plt.xlabel("time (s)")
@@ -281,8 +316,8 @@ if __name__== "__main__":
         plt.title('Yaw')
 
         plt.subplot(332)
-        plt.plot(time_list, x_ekf, 'blue')
-        plt.plot(time_list, x_estimate, 'red')
+        plt.plot(time_list, x_ref, 'blue')
+        plt.plot(time_list, x_model_estimated, 'red')
         if mpc_flag == True:
           plt.plot(time_mpc, x_mpc, 'green')
         plt.xlabel("time (s)")
@@ -290,8 +325,8 @@ if __name__== "__main__":
         plt.title('X')
 
         plt.subplot(333)
-        plt.plot(time_list, y_ekf, 'blue')
-        plt.plot(time_list, y_estimate, 'red')
+        plt.plot(time_list, y_ref, 'blue')
+        plt.plot(time_list, y_model_estimated, 'red')
         if mpc_flag == True:
           plt.plot(time_mpc, y_mpc, 'green')
         plt.xlabel("time (s)")
@@ -300,25 +335,15 @@ if __name__== "__main__":
 
         plt.subplot(334)
         plt.plot(time_list[start_index:end_index], np.rad2deg(steer[start_index:end_index]), 'blue')
-        plt.plot(time_list[start_index:end_index], np.rad2deg(z_angle[start_index:end_index]), 'red')
         if mpc_flag == True:
           plt.plot(time_mpc, np.rad2deg(steer_mpc), 'green')
         plt.ylabel("deg")
         plt.title('steer')
 
-        #start_index = 0
-        plt.subplot(335)
-        plt.plot(x_ekf[start_index:end_index], y_ekf[start_index:end_index], 'blue', marker='^')
-        plt.plot(x_estimate[start_index:end_index], y_estimate[start_index:end_index], 'red')
-        if mpc_flag == True:
-          plt.plot(x_mpc, y_mpc, 'green', marker='x')
-        plt.xlabel("m")
-        plt.ylabel("m")
-        plt.title('Trajectory')
 
         plt.subplot(336)
-        plt.plot(time_list[start_index:end_index], lon_speed[start_index:end_index], 'blue')
-        plt.plot(time_list[start_index:end_index], lon_speed_estimated[start_index:end_index], 'red')
+        plt.plot(time_list[start_index:end_index], x_speed_veh[start_index:end_index], 'blue')
+        plt.plot(time_list[start_index:end_index], veh_speed_model_estimated[start_index:end_index], 'red')
         if mpc_flag == True:
           plt.plot(time_mpc, speed_mpc, 'green')
         plt.ylabel("m/s")
@@ -332,21 +357,18 @@ if __name__== "__main__":
         plt.ylabel("m/ss")
         plt.title('X acc vehicle')
 
-        plt.subplot(338)
-        plt.plot(time_list, throttle, 'blue')
-        plt.plot(time_list, brake, 'red')
-        plt.xlabel("time (s)")
-        plt.ylabel("m/ss")
-        plt.title('Throttle/Brake')
-
-        if yaw_ref != []:
-          plt.subplot(339)
-          plt.plot(time_list, np.rad2deg(yaw_ref), 'blue')
-          plt.xlabel("time (s)")
-          plt.ylabel("m/ss")
-          plt.title('Yaw ref')
+        #start_index = 0
+        plt.subplot(339)
+        plt.plot(x_ref[start_index:end_index], y_ref[start_index:end_index], 'blue')
+        plt.plot(x_model_estimated[start_index:end_index], y_model_estimated[start_index:end_index], 'red')
+        if mpc_flag == True:
+          plt.plot(x_mpc, y_mpc, 'green', marker='x')
+        plt.xlabel("m")
+        plt.ylabel("m")
+        plt.title('Trajectory')
+        plt.xlim([-10,-8])
 
         #plt.tight_layout()
-        plt.savefig('mpc_restuls/mpc_result_000.png')
+        #plt.savefig('mpc_restuls/mpc_result_000.png')
         plt.show()
 
