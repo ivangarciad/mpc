@@ -12,162 +12,67 @@ class MPC:
     def __init__(self):
        print ('MPC process' )
 
-    def fun(self, x, *args):
-      v_pred = args[0]
-      v_target = args[1]
-      t_pred = args[2]
-      t_target = args[3]
-      y_pred = args[4]
-      y_target = args[5]
-      x_pred = args[6]
-      x_target = args[7]
-      dt = args[8]
-      lf = args[9]
-      N = args[10]
-
-      vt_0 = v_pred
-      tt_0 = t_pred
-      xt_0 = x_pred
-      yt_0 = y_pred
-
-      vt = [[vt_0 + x[0]*dt[0]]]
-      for x_elem, dt_elem in zip(x[1:N], dt[1:]):
-        vt = np.append(vt, [[vt[-1][0] + x_elem*dt_elem]], axis=0)
-
-      ev = [[vt[0][0] - v_target[0]]]
-      for v_target_elem, vt_elem in zip(v_target[1:], vt[1:]):
-          ev = np.append(ev, [[vt_elem[0] - v_target_elem]], axis=0)
-
-      tt = [[tt_0 + vt_0*dt[0]*x[4]/lf]]
-      for x_elem, dt_elem, vt_elem in zip(x[N+1:], dt[1:], vt):
-          tt = np.append(tt, [[tt[-1][0] + vt_elem[0]*dt_elem*x_elem/lf]], axis=0)
-
-      et = [[tt[0][0] - t_target[0]]]
-      for t_target_elem, tt_elem in zip(t_target[1:], tt[1:]):
-          et = np.append(et, [[tt_elem[0] - t_target_elem]], axis=0)
-
-      xt = [[xt_0 + vt_0*dt[0]*np.cos(tt_0)]]
-      for dt_elem, vt_elem, tt_elem in zip(dt[1:], vt, tt):
-        xt = np.append(xt, [[xt[-1][0] + vt_elem[0]*dt_elem*np.cos(tt_elem[0])]], axis=0)
-
-      ex = [[xt[0][0] - x_target[0]]]
-      for x_target_elem, xt_elem in zip(x_target[1:], xt[1:]):
-          ex = np.append(ex, [[xt_elem[0] - x_target_elem]], axis=0)
-
-      yt = [[yt_0 + vt_0*dt[0]*np.sin(tt_0)]]
-      for dt_elem, vt_elem, tt_elem in zip(dt[1:], vt, tt):
-        yt = np.append(yt, [[yt[-1][0] + vt_elem[0]*dt_elem*np.sin(tt_elem[0])]], axis=0)
-
-      ey = [[yt[0][0] - y_target[0]]]
-      for y_target_elem, yt_elem in zip(y_target[1:], yt[1:]):
-          ey = np.append(ey, [[yt_elem[0] - y_target_elem]], axis=0)
-
-      ctet = [[y_target[0] - (yt[0][0] + vt[0][0]*np.sin(et[0][0])*dt[0])]]
-      for y_target_elem, yt_elem, vt_elem, et_elem, dt_elem in zip(y_target[1:], yt[1:], vt[1:], et[1:], dt[1:]):
-          ctet = np.append(ctet, [[y_target_elem - (yt_elem + vt_elem*np.sin(et_elem)*dt_elem)]])
-
-      error = 0
-      for ctet_elem in zip(ctet):
-          error += 10000*np.linalg.norm(ctet_elem[0])
-
-      for et_elem in zip(et):
-          error += 1000*np.linalg.norm(et_elem[0])
-
-      for ev_elem in zip(ev):
-          error += 100*np.linalg.norm(ev_elem[0])
-
-      #for ex_elem in zip(ex):
-      #    error += 1000*np.linalg.norm(ex_elem[0])
-
-      #for ey_elem in zip(ey):
-      #    error += 1000*np.linalg.norm(ey_elem[0])
-      
-      for x_elem in x:
-          error += 1*np.linalg.norm(x_elem)
-
-      for x_elem_post, x_elem_ant in zip(x[1:N], x[:N-1]):
-          error += 10*np.linalg.norm(x_elem_ant - x_elem_post)
-
-      for x_elem_post, x_elem_ant in zip(x[N-1:], x[N:]):
-          error += 10*np.linalg.norm(x_elem_ant - x_elem_post)
-
-      return error 
-
     def fun_1(self, x, *args):
-      v_pred = args[0]
-      t_pred = args[1]
-      y_pred = args[2]
-      x_pred = args[3]
+      x_state_list = [args[0]]
 
-      dt = args[4]
-      lf = args[5]
-      N = args[6]
+      dt = args[1]
+      lf = args[2]
+      N = args[3]
 
-      poly = args[7]
-      coefficients = args[8]
+      poly = args[4]
+      coefficients = args[5]
+      label = args[6]
 
-      x_state_list = [[x_pred, y_pred, t_pred, v_pred]]
+      for i in range(N):
+        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[i], np.asarray([x[i + N], x[i]]), lf)], axis=0)
 
-      if N == 6:
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[0], np.asarray([0, x[6], x[0]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[1], np.asarray([0, x[7], x[1]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[2], np.asarray([0, x[8], x[2]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[3], np.asarray([0, x[9], x[3]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[4], np.asarray([0, x[10], x[4]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[5], np.asarray([0, x[11], x[5]]), lf)], axis = 0)
-      elif N == 7:
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[0], np.asarray([0, x[7], x[0]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[1], np.asarray([0, x[8], x[1]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[2], np.asarray([0, x[9], x[2]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[3], np.asarray([0, x[10], x[3]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[4], np.asarray([0, x[11], x[4]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[5], np.asarray([0, x[12], x[5]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[6], np.asarray([0, x[13], x[6]]), lf)], axis = 0)
-      elif N == 10:
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[0], np.asarray([0, x[10], x[0]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[1], np.asarray([0, x[11], x[1]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[2], np.asarray([0, x[12], x[2]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[3], np.asarray([0, x[13], x[3]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[4], np.asarray([0, x[14], x[4]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[5], np.asarray([0, x[15], x[5]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[6], np.asarray([0, x[16], x[6]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[6], np.asarray([0, x[17], x[7]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[6], np.asarray([0, x[18], x[8]]), lf)], axis = 0)
-        x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[6], np.asarray([0, x[19], x[9]]), lf)], axis = 0)
+      #print ('Mpc Predicted State')
+      #print (x_state_list)
 
-      #print ('State')
-      #print (x_state_list[1], x_state_list[2], x_state_list[3])
+      if label == 'y_poly':
+        x_target = x_state_list[1:,0]
+        y_target = poly(x_target)
+        coefficients_der = np.polyder(coefficients)
+        t_target = np.poly1d(coefficients_der)(x_target)
 
-      x_target = x_state_list[1:,0]
-      y_target = poly(x_target)
-      coefficients_der = np.polyder(coefficients)
-      t_target = np.poly1d(coefficients_der)(x_target)
-      
-      #print ('Target')
-      #print ([x_target, y_target, t_target])
-      v_target = 3.2*np.ones(N) # m/s
 
-      ctet = [[x_state_list[1,1] - y_target[0]]]
-      for y_target_elem, yt_elem in zip(y_target[1:], x_state_list[2:,1]):
-          ctet = np.append(ctet, [[yt_elem - y_target_elem]])
+        d_lateral = [[(x_state_list[1,1] - y_target[0])/np.cos(np.pi - x_state_list[1,2])]]
+        #print ('y_poly: ' + str(d_lateral))
+
+        for y_target_elem, yt_elem, yawt_elem in zip(y_target[1:], x_state_list[2:,1], x_state_list[2:,2]):
+            d_lateral = np.append(d_lateral, [[(yt_elem - y_target_elem)/np.cos(np.pi-yawt_elem)]])
+
+      elif label == 'x_poly':
+        y_target = x_state_list[1:,1]
+        x_target = poly(y_target)
+        coefficients_der = np.polyder(coefficients)
+        t_target = np.poly1d(coefficients_der)(y_target)
+
+        d_lateral = [[(x_state_list[1,0] - x_target[0])/np.sin(np.pi - x_state_list[1,2])]]
+        #print ('x_poly: ' + str(d_lateral))
+
+        for x_target_elem, xt_elem, yawt_elem in zip(x_target[1:], x_state_list[2:,0], x_state_list[2:,2]):
+            d_lateral = np.append(d_lateral, [[(xt_elem - x_target_elem)/np.sin(np.pi - yawt_elem)]])
+
 
       et = [[x_state_list[1,2] - t_target[0]]]
       for t_target_elem, tt_elem in zip(t_target[1:], x_state_list[2:,2]):
           et = np.append(et, [[tt_elem - t_target_elem]], axis=0)
 
+      v_target = 3.2*np.ones(N) # m/s
       ev = [[x_state_list[1,3] - v_target[0]]]
       for v_target_elem, vt_elem in zip(v_target[1:], x_state_list[2:,3]):
           ev = np.append(ev, [[vt_elem - v_target_elem]], axis=0)
 
       error = 0
-      for ctet_elem in zip(ctet):
-          error += 2000*np.linalg.norm(ctet_elem[0])
+      for d_lateral_elem in zip(d_lateral):
+          error += 100*np.linalg.norm(d_lateral_elem[0])
 
       for et_elem in zip(et):
-          error += 1000*np.linalg.norm(et_elem[0])
+          error += 100*np.linalg.norm(et_elem[0])
 
       for ev_elem in zip(ev):
-          error += 7000*np.linalg.norm(ev_elem[0])
+          error += 100*np.linalg.norm(ev_elem[0])
 
       for x_elem in x:
           error += 1*np.linalg.norm(x_elem)
@@ -176,122 +81,55 @@ class MPC:
           error += 30*np.linalg.norm(x_elem_ant - x_elem_post)
 
       for x_elem_post, x_elem_ant in zip(x[N-1:], x[N:]):
-          error += 1000*np.linalg.norm(x_elem_ant - x_elem_post)
+          error += 10*np.linalg.norm(x_elem_ant - x_elem_post)
 
       return error 
             
-    def opt(self, x_pred, y_pred, t_pred, v_pred, dt, wheelbase, acc, steer, N, poly, coefficients):
+    def opt(self, x_state, dt, wheelbase, acc, steer, N, poly, coefficients, label):
 
-      acc_max = 2 
-      acc_min = -2
-      steer_max = np.deg2rad(10)
-      steer_min = -np.deg2rad(10)
+      acc_contraint = 2 
+      steer_contraint = np.deg2rad(20)
 
-      acc_min_array = acc_min*np.ones(N)
-      acc_max_array = acc_max*np.ones(N)
-      steer_min_array = steer_min*np.ones(N)
-      steer_max_array = steer_max*np.ones(N)
-
-      if N == 6:
-        cons = ({'type': 'ineq', 'fun': lambda x: x[0] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[1] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[2] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[3] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[4] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[5] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[6] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[6] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[7] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[7] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[8] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[8] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[9] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[9] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[10] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[10] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[11] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[11] + steer_max})
-      elif N == 7:
-        cons = ({'type': 'ineq', 'fun': lambda x: x[0] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[1] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[2] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[3] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[4] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[5] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[6] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[7] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[7] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[8] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[8] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[9] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[9] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[10] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[10] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[11] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[11] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[12] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[12] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[13] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[13] + steer_max})
-      elif N == 10:
-        cons = ({'type': 'ineq', 'fun': lambda x: x[0] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[1] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[2] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[3] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[4] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[5] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[6] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[7] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[7] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[8] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[8] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[9] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: -x[9] + acc_max},
-                {'type': 'ineq', 'fun': lambda x: x[10] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[10] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[11] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[11] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[12] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[12] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[13] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[13] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[14] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[14] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[15] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[15] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[16] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[16] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[17] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[17] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[18] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[18] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: x[19] + steer_max},
-                {'type': 'ineq', 'fun': lambda x: -x[19] + steer_max})
-
-      bounds_min = np.append(acc_min_array, steer_min_array)
-      bounds_max = np.append(acc_max_array, steer_max_array)
-
-      #bounds = Bounds(bounds_min, bounds_max)
+      cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[6] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[6] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[7] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[7] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[8] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[8] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[9] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[9] + acc_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[10] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[10] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[11] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[11] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[12] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[12] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[13] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[13] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[14] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[14] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[15] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[15] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[16] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[16] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[17] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[17] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[18] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[18] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x:  x[19] + steer_contraint},
+              {'type': 'ineq', 'fun': lambda x: -x[19] + steer_contraint})
 
       x0 = acc*np.ones(N)
       x0 = np.append(x0, steer*np.ones(N))
@@ -299,9 +137,7 @@ class MPC:
       options = {'maxiter': 10000, 'disp': True}
 
       #sol = optimize.minimize(self.fun_1, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='trust-constr', bounds=bounds, options=options)
-      sol = optimize.minimize(self.fun_1, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='COBYLA', options=options, constraints=cons)
-      #sol = optimize.minimize(self.fun_1, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='SLSQP', options=options, constraints=cons)
-      # sol: at_0, at_1, at_2, at_3, steert_0, steert_1, steert_2, steert_3
+      sol = optimize.minimize(self.fun_1, args=(x_state, dt, wheelbase, N, poly, coefficients, label), x0=x0, method='COBYLA', options=options, constraints=cons)
       #print sol
 
 
