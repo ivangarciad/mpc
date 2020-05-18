@@ -6,6 +6,7 @@ from sympy import *
 import matplotlib.pyplot as plt
 from sympy.geometry import *
 import model_carla as model
+import utils
 
 
 class MPC:
@@ -22,6 +23,7 @@ class MPC:
       poly = args[4]
       coefficients = args[5]
       label = args[6]
+      v_target = args[7]*np.ones(N) # m/s
 
       for i in range(N):
         x_state_list = np.append(x_state_list, [model.move_with_acc(np.asarray(x_state_list[-1]), dt[i], np.asarray([x[i + N], x[i]]), lf)], axis=0)
@@ -29,66 +31,89 @@ class MPC:
       #print ('Mpc Predicted State')
       #print (x_state_list)
 
+      method_1 = True
+
       if label == 'y_poly':
         x_target = x_state_list[1:,0]
         y_target = poly(x_target)
         coefficients_der = np.polyder(coefficients)
         t_target = np.poly1d(coefficients_der)(x_target)
-
-
-        d_lateral = [[(x_state_list[1,1] - y_target[0])/np.cos(np.pi - x_state_list[1,2])]]
-        #print ('y_poly: ' + str(d_lateral))
-
-        for y_target_elem, yt_elem, yawt_elem in zip(y_target[1:], x_state_list[2:,1], x_state_list[2:,2]):
-            d_lateral = np.append(d_lateral, [[(yt_elem - y_target_elem)/np.cos(np.pi-yawt_elem)]])
-
+      
+      
+        if method_1 == True:
+          d_lateral = [[(x_state_list[1,1] - y_target[0])/np.cos(np.pi - x_state_list[1,2])]]
+          #print ('y_poly: ' + str(d_lateral))
+          
+          for y_target_elem, yt_elem, yawt_elem in zip(y_target[1:], x_state_list[2:,1], x_state_list[2:,2]):
+              d_lateral = np.append(d_lateral, [[(yt_elem - y_target_elem)/np.cos(np.pi-yawt_elem)]])
+      
       elif label == 'x_poly':
         y_target = x_state_list[1:,1]
         x_target = poly(y_target)
         coefficients_der = np.polyder(coefficients)
         t_target = np.poly1d(coefficients_der)(y_target)
+      
+        if method_1 == True:
+          d_lateral = [[(x_state_list[1,0] - x_target[0])/np.sin(np.pi - x_state_list[1,2])]]
+          #print ('x_poly: ' + str(d_lateral))
+          
+          for x_target_elem, xt_elem, yawt_elem in zip(x_target[1:], x_state_list[2:,0], x_state_list[2:,2]):
+              d_lateral = np.append(d_lateral, [[(xt_elem - x_target_elem)/np.sin(np.pi - yawt_elem)]])
 
-        d_lateral = [[(x_state_list[1,0] - x_target[0])/np.sin(np.pi - x_state_list[1,2])]]
-        #print ('x_poly: ' + str(d_lateral))
-
-        for x_target_elem, xt_elem, yawt_elem in zip(x_target[1:], x_state_list[2:,0], x_state_list[2:,2]):
-            d_lateral = np.append(d_lateral, [[(xt_elem - x_target_elem)/np.sin(np.pi - yawt_elem)]])
-
+      if method_1 == False:
+        for i in range(1,N+1):
+          car_vector = {'x': x_state_list[i,0], 'y': x_state_list[i,1], 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': x_state_list[i,2]}
+          car_matrix = utils.vector_to_matrix_pose(car_vector)
+          
+          ref_vector = {'x': x_target[i-1], 'y': y_target[i-1], 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': t_target[i-1]}
+          ref_matrix = utils.vector_to_matrix_pose(ref_vector)
+          
+          if label == 'y_poly':
+            diff_matrix = np.dot(np.linalg.inv(ref_matrix), car_matrix)
+          else:
+            diff_matrix = np.dot(np.linalg.inv(car_matrix), ref_matrix)
+        
+          diff_vector = utils.matrix_to_vector_pose(diff_matrix)
+        
+          if i == 1:
+            d_lateral_new = [[diff_vector['y']]]
+          else:
+            d_lateral_new = np.append(d_lateral_new, [[diff_vector['y']]])
 
       et = [[x_state_list[1,2] - t_target[0]]]
       for t_target_elem, tt_elem in zip(t_target[1:], x_state_list[2:,2]):
           et = np.append(et, [[tt_elem - t_target_elem]], axis=0)
 
-      v_target = 3.2*np.ones(N) # m/s
       ev = [[x_state_list[1,3] - v_target[0]]]
       for v_target_elem, vt_elem in zip(v_target[1:], x_state_list[2:,3]):
           ev = np.append(ev, [[vt_elem - v_target_elem]], axis=0)
 
       error = 0
       for d_lateral_elem in zip(d_lateral):
-          error += 100*np.linalg.norm(d_lateral_elem[0])
+          error += 300*np.linalg.norm(d_lateral_elem[0])
 
       for et_elem in zip(et):
           error += 100*np.linalg.norm(et_elem[0])
 
       for ev_elem in zip(ev):
-          error += 100*np.linalg.norm(ev_elem[0])
+          error += 70*np.linalg.norm(ev_elem[0])
 
       for x_elem in x:
           error += 1*np.linalg.norm(x_elem)
 
-      for x_elem_post, x_elem_ant in zip(x[1:N], x[:N-1]):
-          error += 30*np.linalg.norm(x_elem_ant - x_elem_post)
+      for x_elem_post, x_elem_ant in zip(x[1:N-1], x[:N-2]):  #Acc
+          error += 100*np.linalg.norm(x_elem_ant - x_elem_post)
 
-      for x_elem_post, x_elem_ant in zip(x[N-1:], x[N:]):
-          error += 10*np.linalg.norm(x_elem_ant - x_elem_post)
+      for x_elem_post, x_elem_ant in zip(x[N+1:], x[N:]): #Steer
+          #error += 100*np.linalg.norm(x_elem_ant - x_elem_post) # Resultados muy buenos
+          error += 1000*np.linalg.norm(x_elem_ant - x_elem_post)
 
       return error 
             
-    def opt(self, x_state, dt, wheelbase, acc, steer, N, poly, coefficients, label):
+    def opt(self, x_state, dt, wheelbase, acc, steer, N, poly, coefficients, label, v_target):
 
       acc_contraint = 2 
-      steer_contraint = np.deg2rad(20)
+      steer_contraint = np.deg2rad(30)
 
       cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint},
               {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint},
@@ -137,7 +162,7 @@ class MPC:
       options = {'maxiter': 10000, 'disp': True}
 
       #sol = optimize.minimize(self.fun_1, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='trust-constr', bounds=bounds, options=options)
-      sol = optimize.minimize(self.fun_1, args=(x_state, dt, wheelbase, N, poly, coefficients, label), x0=x0, method='COBYLA', options=options, constraints=cons)
+      sol = optimize.minimize(self.fun_1, args=(x_state, dt, wheelbase, N, poly, coefficients, label, v_target), x0=x0, method='COBYLA', options=options, constraints=cons)
       #print sol
 
 

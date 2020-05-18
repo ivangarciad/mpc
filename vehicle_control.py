@@ -32,7 +32,6 @@ if __name__== "__main__":
         yaw_model_estimated = []
 
         wheelbase = []
-        deltaseconds = []
         x_speed_veh = []
         veh_speed_model_estimated = []
         steer = []
@@ -49,6 +48,7 @@ if __name__== "__main__":
 
         #prius_parameters = {'steer': 30, 'wheelbase': 2.22455}
         prius_parameters = {'steer': np.deg2rad(80), 'wheelbase': 2.22}
+        time_increment = 0
 
         while len(line) != 0: 
             data = eval(line)
@@ -56,35 +56,41 @@ if __name__== "__main__":
             if x_ref == [] or ((data['x'] - x_ref[-1])**2 + (data['y'] - y_ref[-1])**2) > 0.5**2:
               x_ref.append(data['x'])
               y_ref.append(data['y'])
-              yaw_ref.append(data['yaw'])
+              yaw_ref.append(np.deg2rad(data['yaw']))
               
               steer.append(data['steer'])
               x_acc_veh.append(data['x_acc']) 
               
               wheelbase.append(data['wheelbase'])
-              deltaseconds.append(data['deltaseconds'])
+              time_increment += data['deltaseconds']
               x_speed_veh.append(data['lon_speed'])
               throttle.append(data['throttle'])
               brake.append(-data['brake'])
               
               if time_list == []:
-                  time_list.append(deltaseconds[-1])
+                  time_list.append(time_increment)
               else:
-                  time_list.append(time_list[-1]+deltaseconds[-1])
+                  time_list.append(time_list[-1]+time_increment)
               
-              wheelbase_para = 1.7 
+              wheelbase_para = 1.6 
               if x_state_vector_ref == []:
-                 x_state_vector_ref.append([x_ref[0], y_ref[0], yaw_ref[0], x_speed_veh[0]]) 
+                 x_state_vector_ref.append([x_ref[-1], y_ref[-1], yaw_ref[-1], x_speed_veh[-1]]) 
                  print (x_state_vector_ref)
               else: 
-                 u = [steer[-1], x_acc_veh[-1]/3.5]
-                 x_state_vector_ref.append(model.move_with_acc(x_state_vector_ref[-1], deltaseconds[-1], u, wheelbase_para))
+                 print (x_acc_veh[-1])
+                 u = [steer[-1], x_acc_veh[-1]/10]
+                 x_state_vector_ref.append(model.move_with_acc(x_state_vector_ref[-1], time_increment, u, wheelbase_para))
               
               # Representation
               x_model_estimated.append(x_state_vector_ref[-1][0])
               y_model_estimated.append(x_state_vector_ref[-1][1])
               yaw_model_estimated.append(model.normalize_angle(x_state_vector_ref[-1][2]))
               veh_speed_model_estimated.append(x_state_vector_ref[-1][3])
+
+              time_increment = 0
+
+            else:
+              time_increment += data['deltaseconds'] 
 
             line = file_p.readline()
 
@@ -93,15 +99,17 @@ if __name__== "__main__":
 
         if mpc_flag == False:
            plt.subplot(221)
-           plt.plot(x_ref, y_ref, marker='x')
+           plt.plot(x_ref, y_ref)
+           plt.plot(x_model_estimated, y_model_estimated, 'red')
            plt.subplot(222)
            plt.plot(yaw_ref)
+           plt.plot(yaw_model_estimated, 'red')
            plt.title('Yaw')
            plt.subplot(223)
            plt.plot(x_acc_veh)
            plt.title('XAcc')
            plt.subplot(224)
-           plt.plot(steer)
+           plt.plot(np.rad2deg(steer))
            plt.title('Steer')
            plt.show()
            exit()
@@ -122,7 +130,6 @@ if __name__== "__main__":
         start_index = 0 
         end_index = len(x_ref) - 50
         print ('Lenght: ' + str(len(x_ref)))
-        print ('dt: ' + str(deltaseconds[0]))
 
         x_state_vector_transf = []
 
@@ -182,6 +189,8 @@ if __name__== "__main__":
             #plt.show()
             i += 1
 
+        v_target = 3.5 # Speed reference
+
         x_state_vector = []
         if mpc_flag == True:
           i = start_index
@@ -212,14 +221,14 @@ if __name__== "__main__":
                 # Controller
                 if x_state_vector == []:
                     print ('Inicialitation x_state_vector_transf')
-                    x_state_vector = np.asarray([[x_ref[start_index], y_ref[start_index], np.deg2rad(yaw_ref[start_index]), 0]])
+                    x_state_vector = np.asarray([[x_ref[start_index], y_ref[start_index], yaw_ref[start_index], 0]])
                     print (x_state_vector)
 
                 # Reference path is evaluated and MPC is called. 
                 if x_distance_error < y_distance_error:
-                  sol_mpc = mpc.opt(x_state_vector[-1], dt_mpc*np.ones(N), wheelbase_para, acc_control, steer_control, N, y_poly, coefficients_x, 'y_poly')
+                  sol_mpc = mpc.opt(x_state_vector[-1], dt_mpc*np.ones(N), wheelbase_para, acc_control, steer_control, N, y_poly, coefficients_x, 'y_poly', v_target)
                 else:
-                  sol_mpc = mpc.opt(x_state_vector[-1], dt_mpc*np.ones(N), wheelbase_para, acc_control, steer_control, N, x_poly, coefficients_y, 'x_poly')
+                  sol_mpc = mpc.opt(x_state_vector[-1], dt_mpc*np.ones(N), wheelbase_para, acc_control, steer_control, N, x_poly, coefficients_y, 'x_poly', v_target)
 
                 # Car simulator.
                 print ('Initial state')
@@ -245,7 +254,7 @@ if __name__== "__main__":
                 car_vector = {'x': x_state_vector[-1,0], 'y': x_state_vector[-1,1], 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': x_state_vector[-1,2]} 
                 car_matrix = utils.vector_to_matrix_pose(car_vector)
 
-                ref_vector = {'x': x_ref[i], 'y': y_ref[i], 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': np.deg2rad(yaw_ref[i])} 
+                ref_vector = {'x': x_ref[i], 'y': y_ref[i], 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': yaw_ref[i]} 
                 ref_matrix = utils.vector_to_matrix_pose(ref_vector)
 
                 diff_matrix = np.dot(np.linalg.inv(ref_matrix), car_matrix)
