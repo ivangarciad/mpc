@@ -77,7 +77,6 @@ if __name__== "__main__":
                  x_state_vector_ref.append([x_ref[-1], y_ref[-1], yaw_ref[-1], x_speed_veh[-1]]) 
                  print (x_state_vector_ref)
               else: 
-                 print (x_acc_veh[-1])
                  u = [steer[-1], x_acc_veh[-1]/10]
                  x_state_vector_ref.append(model.move_with_acc(x_state_vector_ref[-1], time_increment, u, wheelbase_para))
               
@@ -189,7 +188,6 @@ if __name__== "__main__":
             #plt.show()
             i += 1
 
-        v_target = 3.5 # Speed reference
 
         x_state_vector = []
         if mpc_flag == True:
@@ -197,7 +195,13 @@ if __name__== "__main__":
           while i < end_index:
                 print ('--------------------')
                 print ('Index: ' + str(i))
-                N = 10
+
+
+                v_target = 3.5 # Speed reference
+                if i > 100:
+                    v_target = 8;
+
+                N = 20
                 dt_mpc = 0.2
 
                 points_ref = np.transpose(np.array([(x_ref[i:i+N]), (y_ref[i:i+N]), (np.zeros(N))])) # Reference points
@@ -347,11 +351,13 @@ if __name__== "__main__":
         plt.subplot(334)
         plt.plot(time_mpc, np.rad2deg(steer_mpc), 'green')
         plt.ylabel("deg")
+        plt.xlabel("s")
         plt.title('steer')
 
         plt.subplot(336)
         plt.plot(time_mpc, speed_mpc, 'green')
         plt.ylabel("m/s")
+        plt.xlabel("s")
         plt.title('speed')
 
         plt.subplot(337)
