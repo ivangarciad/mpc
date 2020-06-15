@@ -87,8 +87,13 @@ import re
 import weakref
 
 import sys
-sys.path.insert(0, '/home/igarcia/universidad/investigacion/mpc_path_planning')
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+sys.path.insert(0, '/home/ivan/projects/mpc_path_planning')
 import mpc
+import utils
+import model_carla as model
 
 try:
     import pygame
@@ -198,6 +203,7 @@ class World(object):
         blueprint.set_attribute('role_name', 'hero')
         if blueprint.has_attribute('color'):
             color = random.choice(blueprint.get_attribute('color').recommended_values)
+            color = '28,46,58'
             blueprint.set_attribute('color', color)
         if blueprint.has_attribute('driver_id'):
             driver_id = blueprint.get_attribute('driver_id').recommended_values[10]
@@ -413,13 +419,13 @@ class KeyboardControl(object):
                     elif event.key == K_x:
                         current_lights ^= carla.VehicleLightState.RightBlinker
 
-        if not self._autopilot_enabled:
-            if isinstance(self._control, carla.VehicleControl):
-                self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time())
-                self._control.reverse = self._control.gear < 0
-            elif isinstance(self._control, carla.WalkerControl):
-                self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time(), world)
-            world.player.apply_control(self._control)
+       #if not self._autopilot_enabled:
+       #    if isinstance(self._control, carla.VehicleControl):
+       #        self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time())
+       #        self._control.reverse = self._control.gear < 0
+       #    elif isinstance(self._control, carla.WalkerControl):
+       #        self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time(), world)
+       #    world.player.apply_control(self._control)
 
     def _parse_vehicle_keys(self, keys, milliseconds):
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
@@ -514,7 +520,7 @@ class HUD(object):
                 player = actor
                 break
         self._info_text = [
-            'Proyecto de Adolfo',
+            'MPC INVETT',
             'Server:  % 16.0f FPS' % self.server_fps,
             'Client:  % 16.0f FPS' % clock.get_fps(),
             '',
@@ -879,11 +885,12 @@ class CameraManager(object):
         self.recording = False
         bound_y = 0.5 + self._parent.bounding_box.extent.y
         Attachment = carla.AttachmentType
+        # Camera position
         self._camera_transforms = [
+            (carla.Transform(carla.Location(x=-4.0, z=5.0), carla.Rotation(pitch=30.0)), Attachment.SpringArm),
             (carla.Transform(carla.Location(x=-5.5, z=2.5), carla.Rotation(pitch=8.0)), Attachment.SpringArm),
             (carla.Transform(carla.Location(x=1.6, z=1.7)), Attachment.Rigid),
             (carla.Transform(carla.Location(x=5.5, y=1.5, z=1.5)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=-8.0, z=6.0), carla.Rotation(pitch=6.0)), Attachment.SpringArm),
             (carla.Transform(carla.Location(x=-1, y=-bound_y, z=0.5)), Attachment.Rigid)]
         self.transform_index = 1
         self.sensors = [
@@ -990,15 +997,8 @@ def game_loop(args):
     pygame.init()
     pygame.font.init()
     world = None
-    x_ref, y_ref, yaw_ref, v_ref = [], [], [], []
     flag_veh_control = True
-    max_steering_angle_mpc = np.deg2rad(30)
-    max_acc_mpc = 2.0
     wheelbase_para = 1.6
-    a_control = 0.0
-    steer_control = 0
-    N = 6  #control horizon
-    dt_mpc = 0.2
     i=1
     
     try:
@@ -1011,17 +1011,18 @@ def game_loop(args):
 
         hud = HUD(args.width, args.height)
         world = World(client.get_world(), hud, args)
-        #controller = KeyboardControl(world, args.autopilot)
+        controller = KeyboardControl(world, args.autopilot)
         
         if isinstance(world.player, carla.Vehicle):
             control = carla.VehicleControl()
         clock = pygame.time.Clock()
         
-        waypoints = world.map.get_waypoint(world.player.get_location(), project_to_road=True, lane_type=(carla.LaneType.Driving))
+        waypoints = world.map.get_waypoint(world.player.get_location(), project_to_road=False, lane_type=(carla.LaneType.Driving))
         waypoint_list = [waypoints]
-        x_ref, y_ref, yaw_ref, v_ref = [], [], [], []
+        x_ref, y_ref, yaw_ref = [], [], []
+
         #Define a path using waypoints separated 0.5 meters from each other
-        for i in range(0,700):
+        for i in range(0,4000):
             next_waypoint = waypoints.next(0.5)
             dir_num = len(next_waypoint)
             if dir_num >= 2:
@@ -1033,33 +1034,59 @@ def game_loop(args):
                 waypoint_list.append(next_waypoint[-1])
             waypoints = waypoint_list[-1]
 
+        waypoints_new = [waypoint_list[0]]
+        for elem in waypoint_list:
+          if ((elem.transform.location.x - waypoints_new[-1].transform.location.x)**2 + (elem.transform.location.y - waypoints_new[-1].transform.location.y)**2) > 0.5**2:
+              waypoints_new.append(elem)
+              
+        waypoint_list = waypoints_new
+        for waypoint in waypoint_list:
+            world.world.debug.draw_point(carla.Location(x=waypoint.transform.location.x, y=waypoint.transform.location.y, z=2.), size=0.05, color=carla.Color(0,0,255), life_time=1000, persistent_lines=False)
+        
         #Build the reference state vector    
         for i in range(0,len(waypoint_list)):
             x_ref.append(waypoint_list[i].transform.location.x)
             y_ref.append(waypoint_list[i].transform.location.y)
             yaw_ref.append(np.deg2rad(waypoint_list[i].transform.rotation.yaw))
-            v_ref.append(3)
 
         i=1
+        print ('The way points have been loaded')
+        control.throttle = 1 
+        control.steer = 0 
+        world.player.apply_control(control)
+
+        # MPC parameters
+        N = 6
+        dt_mpc = 0.2
+
+        max_steer = np.deg2rad(45)
+        max_acc_veh = 2 #m/s^2
+        min_acc_veh = 3 #m/s^2
+
+        offset = 10
 
         #Game loop
         while True:
             clock.tick_busy_loop(60)
+            controller.parse_events(client, world, clock)
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
 
             if flag_veh_control == True:
-              points_ref = np.transpose(np.array([(x_ref[i:i+30]), (y_ref[i:i+30]), (np.zeros(30))])) # Reference points
-              for u in range(i,i+30):
-                  world.world.debug.draw_point(waypoint_list[u].transform.location, size=0.05, color=carla.Color(0,0,255), life_time=0.1, persistent_lines=False)
+              # Speed target
+              v_target = 5  #Speed reference m/s
+
+              # Reference points
+              points_ref = np.transpose(np.array([(x_ref[i:i+N+offset]), (y_ref[i:i+N+offset]), (np.zeros(N+offset))]))
+
               # Poly fit
-              coefficients_x = np.polyfit(points_ref[:,0], points_ref[:,1], 30-1)
-              coefficients_y = np.polyfit(points_ref[:,1], points_ref[:,0], 30-1)
+              coefficients_x = np.polyfit(points_ref[:,0], points_ref[:,1], N-1)
+              coefficients_y = np.polyfit(points_ref[:,1], points_ref[:,0], N-1)
               y_poly = np.poly1d(coefficients_x)
               x_poly = np.poly1d(coefficients_y)
-              points_y_poly = np.transpose(np.array([(points_ref[:,0]), (y_poly(points_ref[:,0])), (np.zeros(30))])) # Reference points
-              points_x_poly = np.transpose(np.array([(x_poly(points_ref[:,1])), (points_ref[:,1]), (np.zeros(30))])) # Reference points
+              points_y_poly = np.transpose(np.array([(points_ref[:,0]), (y_poly(points_ref[:,0])), (np.zeros(N+offset))])) # Reference points
+              points_x_poly = np.transpose(np.array([(x_poly(points_ref[:,1])), (points_ref[:,1]), (np.zeros(N+offset))])) # Reference points
 
               x_distance_error = 0
               y_distance_error = 0
@@ -1074,53 +1101,122 @@ def game_loop(args):
               x_act = round(t.location.x,2)
               y_act = round(t.location.y,2)
               yaw_act = np.deg2rad(t.rotation.yaw)
-              v_act = math.sqrt(v.x**2 + v.y**2)
-              x_state_vector = np.asarray([x_act, y_act, yaw_act, v_act])
+              speed_veh = math.sqrt(v.x**2 + v.y**2)
+              x_state_vector = np.asarray([x_act, y_act, yaw_act, speed_veh])
+              #print ('Initial x_state_vector: ' + str(x_state_vector))
               
-              if x_distance_error < y_distance_error:
-                  sol_mpc = mpc.opt(x_state_vector, dt_mpc*np.ones(N), wheelbase_para, a_control, steer_control, N, y_poly, coefficients_x, 'y_poly', v_ref[i])
+              current_control = world.player.get_control()
+              if current_control.throttle > 0:
+                acc = current_control.throttle*max_acc_veh
+              elif current_control.brake > 0:
+                acc = current_control.brake*min_acc_veh
               else:
-                  sol_mpc = mpc.opt(x_state_vector, dt_mpc*np.ones(N), wheelbase_para, a_control, steer_control, N, x_poly, coefficients_y, 'x_poly', v_ref[i])
-              """
-              a_control = sol_mpc[0]
-              if a_control > 0:
-                  if a_control <= max_acc_mpc:
-                      control.throttle = a_control / max_acc_mpc
-                      control.brake = 0
-                  #elif a_control < (0.4*max_acc_mpc):
-                  #    control.throttle = 0.4
-                  #    control.brake = 0
-              else:
-                  if a_control >= -max_acc_mpc:
-                      control.brake = abs(a_control) / max_acc_mpc
-                      control.throttle = 0
-                  else:
-                      control.brake = 1.0
-                      control.throttle = 0
-              """
-              control.throttle = 0.2 
-              steer_control = sol_mpc[N]
-              control.steer = steer_control / max_steering_angle_mpc
-              
-              t = world.player.get_transform()
-              x_act_ac = round(t.location.x,2)    #precisión centimétrica
-              y_act_ac = round(t.location.y,2)
+                acc = 0
 
-              if x_act_ac != x_act or y_act_ac != y_act:
-                  distance_list = []
-                  for x_elem, y_elem in zip(points_ref[:,0], points_ref[:,1]):
-                      distance = (x_elem - x_act_ac)**2 + (y_elem - y_act_ac)**2
-                      distance_list.append(distance)  
-                  index = 0
-                  for dist_ant, dist, dist_sig in zip(distance_list[0:], distance_list[1:], distance_list[2:]):
-                      index += 1
-                      if dist_ant < dist and dist < 1.0:
-                          i += index
-                          break
+              steer = current_control.steer*max_steer
+
+              #print ('Acc + sterr: ' + str([acc, steer]))
+
+              if x_distance_error < y_distance_error:
+                  sol_mpc = mpc.opt(x_state_vector, dt_mpc*np.ones(N), wheelbase_para, acc, steer, N, y_poly, coefficients_x, 'y_poly', v_target)
+              else:
+                  sol_mpc = mpc.opt(x_state_vector, dt_mpc*np.ones(N), wheelbase_para, acc, steer, N, x_poly, coefficients_y, 'x_poly', v_target)
+
+              # MPC solutions are shown in the simulator
+
+              # Car simulator.
+              aux = [x_state_vector]
+              for acc_elem, steer_elem in zip(sol_mpc[:N], sol_mpc[N:]):
+                u = [steer_elem, acc_elem]
+                aux.append(model.move_with_acc(np.asarray(aux[-1]), dt_mpc, u, wheelbase_para, debug=True))
+
+              #print ('Model position')
+              for elem in aux:
+                  location = carla.Location(x=elem[0], y=elem[1], z=2)
+                  rotation = carla.Rotation(yaw=elem[2], pitch=0, roll=0)
+                  #print (str(location) + ' ' + str(rotation))
+                  world.world.debug.draw_point(location, size=0.05, color=carla.Color(255,0,0), life_time=0.1, persistent_lines=False)
+
+              # Control actions
+
+              # A scalar value to control the vehicle steering [-1.0, 1.0]
+              control.steer = sol_mpc[N] / max_steer
+
+              if sol_mpc[0] >= 0:
+                # A scalar value to control the vehicle throttle [0.0, 1.0]
+                control.throttle = sol_mpc[0]/max_acc_veh 
+                control.brake = 0 
+              else:
+                # A scalar value to control the vehicle brake [0.0, 1.0]
+                control.throttle = 0 
+                control.brake = abs(sol_mpc[0]/min_acc_veh)
+
+              print (control)
+              world.player.apply_control(control)
+
+              # Data representation
+              t = world.player.get_transform()
+              car_vector = {'x': t.location.x, 'y': t.location.y, 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': t.rotation.yaw} 
+              car_matrix = utils.vector_to_matrix_pose(car_vector)
+
+              ref_vector = {'x': x_ref[i], 'y': y_ref[i], 'z': 0, 'roll': 0, 'pitch': 0, 'yaw': yaw_ref[i]} 
+              ref_matrix = utils.vector_to_matrix_pose(ref_vector)
+
+              diff_matrix = np.dot(np.linalg.inv(ref_matrix), car_matrix)
+              diff_vector = utils.matrix_to_vector_pose(diff_matrix)
+
+              if diff_vector['x'] > 15:
+                    print ('Too much difference in x')
+                    exit()
+
+
+              radio = 1 
+              print (diff_vector)
+              for x_elem, y_elem in zip(points_ref[:,0], points_ref[:,1]):
+                if ((x_elem - x_state_vector[0])**2 + (y_elem - x_state_vector[1])**2) > radio**2:
+                  if diff_vector['x'] > 0: # Referencia detras de coche
+                    i += 1
+                  else:
+                      break
+                else:
+                  i += 1
+                  break
+
+              print_figure = False
+              if print_figure == True:
+                ax = plt.gca()
+                plt.cla()
+                plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
+                plt.plot(points_ref[0,0], points_ref[0,1], 'green', marker='x', linestyle='None')
+                if x_distance_error < y_distance_error:
+                  plt.plot(points_ref[:,0], y_poly(points_ref[:,0]), 'green')
+                else:
+                  plt.plot(x_poly(points_ref[:,1]), points_ref[:,1], 'green')
+                aux = np.asarray(aux)
+                plt.plot(aux[1:,0], aux[1:,1], 'blue', marker='o')
+                
+                circulo = matplotlib.patches.Circle(xy=(x_state_vector[0], x_state_vector[1]), radius=radio, fill=None)
+                ax.add_patch(circulo)
+                
+                offset = 10
+                plt.ylim([points_ref[0,1]-offset, points_ref[0,1]+offset])
+                plt.xlim([points_ref[0,0]-offset, points_ref[0,0]+offset])
+                plt.text(points_ref[0,0]+2, points_ref[0,1]+3, 'x_poly: ' + str(y_distance_error), fontsize=12)
+                plt.text(points_ref[0,0]+2, points_ref[0,1]+4, 'y_poly: ' + str(x_distance_error), fontsize=12)
+                if x_distance_error < y_distance_error:
+                  plt.text(points_ref[0,0]+2, points_ref[0,1]+2, 'y_poly', fontsize=12)
+                else:
+                  plt.text(points_ref[0,0]+2, points_ref[0,1]+2, 'x_poly', fontsize=12)
+                plt.text(points_ref[0,0]+1, points_ref[0,1]+1, str(yaw_ref[i]), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-2, 'x: ' + str(diff_vector['x']) + ' y: ' + str(diff_vector['y']) + ' yaw: ' + str(diff_vector['yaw']), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-4, 'x: ' + str(car_vector['x']) + ' y: ' + str(car_vector['y']) + ' yaw: ' + str(car_vector['yaw']), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-6, 'x: ' + str(ref_vector['x']) + ' y: ' + str(ref_vector['y']) + ' yaw: ' + str(ref_vector['yaw']), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-8, 'dx: ' + str(car_vector['x'] - ref_vector['x']) + ' dy: ' + str(car_vector['y'] - ref_vector['y']) + ' ayaw: ' + str(car_vector['yaw'] - ref_vector['yaw']), fontsize=12)
+                
+                plt.savefig('mpc_results/mpc_result_'+str(i)+'.png')
+
               print(i)
 
-            print (control)
-            world.player.apply_control(control)
 
     finally:
 
