@@ -38,6 +38,7 @@ class MPC:
         y_target = poly(x_target)
         coefficients_der = np.polyder(coefficients)
         t_target = np.poly1d(coefficients_der)(x_target)
+        t_target = np.arctan(t_target)
       
       
         if method_1 == True:
@@ -52,6 +53,7 @@ class MPC:
         x_target = poly(y_target)
         coefficients_der = np.polyder(coefficients)
         t_target = np.poly1d(coefficients_der)(y_target)
+        t_target = np.arctan(t_target)
       
         if method_1 == True:
           d_lateral = [[(x_state_list[1,0] - x_target[0])/np.sin(np.pi - x_state_list[1,2])]]
@@ -93,7 +95,7 @@ class MPC:
           error += 900*np.linalg.norm(d_lateral_elem[0])
 
       for et_elem in zip(et):
-          error += 320*np.linalg.norm(et_elem[0])
+          error += 350*np.linalg.norm(et_elem[0])
 
       for ev_elem in zip(ev):
           error += 300*np.linalg.norm(ev_elem[0])
@@ -114,7 +116,8 @@ class MPC:
       print ('Veh speed: ' + str(x_state[3]))
       acc_contraint_max = 2   #m/s^2 
       acc_contraint_min = 3   #m/s^2
-      steer_contraint = np.deg2rad(20)
+      steer_contraint = np.deg2rad(45)
+      iterations = 110
       
 
       if N == 6:
@@ -302,7 +305,7 @@ class MPC:
       x0 = np.append(x0, steer*np.ones(N))
 
       #options = {'maxiter': 10000, 'disp': True}
-      options = {'maxiter': 150, 'disp': False}
+      options = {'maxiter': iterations, 'disp': False}
 
       #sol = optimize.minimize(self.mpc_process, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='trust-constr', bounds=bounds, options=options)
       sol = optimize.minimize(self.mpc_process, args=(x_state, dt, wheelbase, N, poly, coefficients, label, v_target), x0=x0, method='COBYLA', options=options, constraints=cons)
