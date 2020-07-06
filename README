@@ -1,1 +1,5 @@
-Primer fichero añadido de MPC project
+An MPC Controller has been implemented. To execute it run the command:
+
+* python3 vehicle_control.py datalog_car_v2.json 
+
+
