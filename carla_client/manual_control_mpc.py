@@ -1031,7 +1031,7 @@ def game_loop(args):
         error_d_lat, error_yaw, error_v = [], [], []
 
         #Define a path using waypoints separated 0.5 meters from each other
-        for i in range(0,700):
+        for i in range(0,4000):
             next_waypoint = waypoints.next(0.5)
             if flag_straight_path == False:
                 dir_num = len(next_waypoint)
@@ -1116,6 +1116,7 @@ def game_loop(args):
               yaw_act = np.deg2rad(t.rotation.yaw)
               speed_veh = math.sqrt(v.x**2 + v.y**2)
               x_state_vector = np.asarray([x_act, y_act, yaw_act, speed_veh])
+              #print ('Initial x_state_vector: ' + str(x_state_vector))
               
               current_control = world.player.get_control()
               if current_control.throttle > 0:
@@ -1183,7 +1184,6 @@ def game_loop(args):
               
               radio = 1 
               print (diff_vector)
-
               for x_elem, y_elem in zip(points_ref[:,0], points_ref[:,1]):
                 if ((x_elem - x_state_vector[0])**2 + (y_elem - x_state_vector[1])**2) > radio**2:
                   if diff_vector['x'] > 0: # Referencia detras de coche
@@ -1241,6 +1241,39 @@ def game_loop(args):
                 error_v.append(speed_veh - v_target)
                 a_mpc_list.append(sol_mpc[0])
                 steer_mpc_list.append(sol_mpc[N])
+
+              print_figure = False
+              if print_figure == True:
+                ax = plt.gca()
+                plt.cla()
+                plt.plot(points_ref[:,0], points_ref[:,1], 'yellow', marker='^', linestyle='None')
+                plt.plot(points_ref[0,0], points_ref[0,1], 'green', marker='x', linestyle='None')
+                if x_distance_error < y_distance_error:
+                  plt.plot(points_ref[:,0], y_poly(points_ref[:,0]), 'green')
+                else:
+                  plt.plot(x_poly(points_ref[:,1]), points_ref[:,1], 'green')
+                aux = np.asarray(aux)
+                plt.plot(aux[1:,0], aux[1:,1], 'blue', marker='o')
+                
+                circulo = matplotlib.patches.Circle(xy=(x_state_vector[0], x_state_vector[1]), radius=radio, fill=None)
+                ax.add_patch(circulo)
+                
+                offset = 10
+                plt.ylim([points_ref[0,1]-offset, points_ref[0,1]+offset])
+                plt.xlim([points_ref[0,0]-offset, points_ref[0,0]+offset])
+                plt.text(points_ref[0,0]+2, points_ref[0,1]+3, 'x_poly: ' + str(y_distance_error), fontsize=12)
+                plt.text(points_ref[0,0]+2, points_ref[0,1]+4, 'y_poly: ' + str(x_distance_error), fontsize=12)
+                if x_distance_error < y_distance_error:
+                  plt.text(points_ref[0,0]+2, points_ref[0,1]+2, 'y_poly', fontsize=12)
+                else:
+                  plt.text(points_ref[0,0]+2, points_ref[0,1]+2, 'x_poly', fontsize=12)
+                plt.text(points_ref[0,0]+1, points_ref[0,1]+1, str(yaw_ref[i]), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-2, 'x: ' + str(diff_vector['x']) + ' y: ' + str(diff_vector['y']) + ' yaw: ' + str(diff_vector['yaw']), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-4, 'x: ' + str(car_vector['x']) + ' y: ' + str(car_vector['y']) + ' yaw: ' + str(car_vector['yaw']), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-6, 'x: ' + str(ref_vector['x']) + ' y: ' + str(ref_vector['y']) + ' yaw: ' + str(ref_vector['yaw']), fontsize=12)
+                plt.text(points_ref[0,0]-offset, points_ref[0,1]-8, 'dx: ' + str(car_vector['x'] - ref_vector['x']) + ' dy: ' + str(car_vector['y'] - ref_vector['y']) + ' ayaw: ' + str(car_vector['yaw'] - ref_vector['yaw']), fontsize=12)
+                
+                plt.savefig('mpc_results/mpc_result_'+str(i)+'.png')
 
               print(i)
 

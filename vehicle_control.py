@@ -141,7 +141,7 @@ if __name__== "__main__":
           while i < end_index:
             print ('--------------------')
             print ('Index: ' + str(i))
-            N = 30
+            N = 6
 
             points_ref = np.transpose(np.array([(x_ref[i:i+N]), (y_ref[i:i+N]), (np.zeros(N))])) # Reference points
 
@@ -198,10 +198,8 @@ if __name__== "__main__":
 
 
                 v_target = 3.5 # Speed reference
-                if i > 100:
-                    v_target = 8;
 
-                N = 20
+                N = 6
                 dt_mpc = 0.2
 
                 points_ref = np.transpose(np.array([(x_ref[i:i+N]), (y_ref[i:i+N]), (np.zeros(N))])) # Reference points

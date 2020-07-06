@@ -13,7 +13,7 @@ class MPC:
     def __init__(self):
        print ('MPC process' )
 
-    def fun_1(self, x, *args):
+    def mpc_process(self, x, *args):
       x_state_list = [args[0]]
 
       dt = args[1]
@@ -38,6 +38,7 @@ class MPC:
         y_target = poly(x_target)
         coefficients_der = np.polyder(coefficients)
         t_target = np.poly1d(coefficients_der)(x_target)
+        t_target = np.arctan(t_target)
       
       
         if method_1 == True:
@@ -52,6 +53,7 @@ class MPC:
         x_target = poly(y_target)
         coefficients_der = np.polyder(coefficients)
         t_target = np.poly1d(coefficients_der)(y_target)
+        t_target = np.arctan(t_target)
       
         if method_1 == True:
           d_lateral = [[(x_state_list[1,0] - x_target[0])/np.sin(np.pi - x_state_list[1,2])]]
@@ -90,47 +92,47 @@ class MPC:
 
       error = 0
       for d_lateral_elem in zip(d_lateral):
-          error += 300*np.linalg.norm(d_lateral_elem[0])
+          error += 900*np.linalg.norm(d_lateral_elem[0])
 
       for et_elem in zip(et):
-          error += 100*np.linalg.norm(et_elem[0])
+          error += 350*np.linalg.norm(et_elem[0])
 
       for ev_elem in zip(ev):
-          error += 70*np.linalg.norm(ev_elem[0])
+          error += 300*np.linalg.norm(ev_elem[0])
 
       for x_elem in x:
-          error += 1*np.linalg.norm(x_elem)
+          error += 0*np.linalg.norm(x_elem)
 
       for x_elem_post, x_elem_ant in zip(x[1:N-1], x[:N-2]):  #Acc
-          error += 100*np.linalg.norm(x_elem_ant - x_elem_post)
+          error += 200*np.linalg.norm(x_elem_ant - x_elem_post)
 
       for x_elem_post, x_elem_ant in zip(x[N+1:], x[N:]): #Steer
-          error += 100*np.linalg.norm(x_elem_ant - x_elem_post) # Resultados muy buenos
+          error += 4550*np.linalg.norm(x_elem_ant - x_elem_post) # Resultados muy buenos
 
       return error 
             
     def opt(self, x_state, dt, wheelbase, acc, steer, N, poly, coefficients, label, v_target):
 
-      acc_contraint_max = 2 
-      acc_contraint_min = 3
-      steer_contraint = np.deg2rad(20)
-      if v_target > 6:
-        steer_contraint = np.deg2rad(10)
+      print ('Veh speed: ' + str(x_state[3]))
+      acc_contraint_max = 2   #m/s^2 
+      acc_contraint_min = 3   #m/s^2
+      steer_contraint = np.deg2rad(45)
+      iterations = 110
       
 
       if N == 6:
-        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_min},
+        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_max},
                 {'type': 'ineq', 'fun': lambda x:  x[6] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x: -x[6] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x:  x[7] + steer_contraint},
@@ -143,27 +145,60 @@ class MPC:
                 {'type': 'ineq', 'fun': lambda x: -x[10] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x:  x[11] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x: -x[11] + steer_contraint})
+      elif N == 8:
+        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[6] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[7] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[7] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[8] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[8] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[9] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[9] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[10] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[10] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[11] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[11] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[12] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[12] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[13] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[13] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[14] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[14] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x:  x[15] + steer_contraint},
+                {'type': 'ineq', 'fun': lambda x: -x[15] + steer_contraint})
       elif N == 10:
-        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[6] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[7] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[7] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[8] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[8] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[9] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[9] + acc_contraint_min},
+        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[6] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[7] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[7] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[8] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[8] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[9] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[9] + acc_contraint_max},
                 {'type': 'ineq', 'fun': lambda x:  x[10] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x: -x[10] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x:  x[11] + steer_contraint},
@@ -185,46 +220,46 @@ class MPC:
                 {'type': 'ineq', 'fun': lambda x:  x[19] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x: -x[19] + steer_contraint})
       elif N == 20:
-        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[6] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[7] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[7] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[8] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[8] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[9] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[9] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[10] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[10] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[11] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[11] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[12] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[12] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[13] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[13] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[14] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[14] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[15] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[15] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[16] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[16] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[17] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[17] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[18] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[18] + acc_contraint_min},
-                {'type': 'ineq', 'fun': lambda x:  x[19] + acc_contraint_max},
-                {'type': 'ineq', 'fun': lambda x: -x[19] + acc_contraint_min},
+        cons = ({'type': 'ineq', 'fun': lambda x:  x[0] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[0] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[1] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[1] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[2] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[2] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[3] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[3] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[4] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[4] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[5] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[5] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[6] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[6] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[7] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[7] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[8] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[8] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[9] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[9] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[10] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[10] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[11] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[11] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[12] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[12] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[13] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[13] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[14] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[14] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[15] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[15] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[16] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[16] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[17] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[17] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[18] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[18] + acc_contraint_max},
+                {'type': 'ineq', 'fun': lambda x:  x[19] + acc_contraint_min},
+                {'type': 'ineq', 'fun': lambda x: -x[19] + acc_contraint_max},
                 {'type': 'ineq', 'fun': lambda x:  x[20] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x: -x[20] + steer_contraint},
                 {'type': 'ineq', 'fun': lambda x:  x[21] + steer_contraint},
@@ -270,10 +305,10 @@ class MPC:
       x0 = np.append(x0, steer*np.ones(N))
 
       #options = {'maxiter': 10000, 'disp': True}
-      options = {'maxiter': 100, 'disp': False}
+      options = {'maxiter': iterations, 'disp': False}
 
-      #sol = optimize.minimize(self.fun_1, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='trust-constr', bounds=bounds, options=options)
-      sol = optimize.minimize(self.fun_1, args=(x_state, dt, wheelbase, N, poly, coefficients, label, v_target), x0=x0, method='COBYLA', options=options, constraints=cons)
+      #sol = optimize.minimize(self.mpc_process, args=(v_pred, t_pred, y_pred, x_pred, dt, wheelbase, N, poly, coefficients), x0=x0, method='trust-constr', bounds=bounds, options=options)
+      sol = optimize.minimize(self.mpc_process, args=(x_state, dt, wheelbase, N, poly, coefficients, label, v_target), x0=x0, method='COBYLA', options=options, constraints=cons)
       #print sol
 
 
